@@ -1,0 +1,9 @@
+[project]
+name = "feedback-manager"
+version = "0.1.0"
+description = "Project-local feedback storage and host adapters"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false

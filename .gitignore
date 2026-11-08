@@ -1,0 +1,4 @@
+.feedback-manager/
+.venv/
+__pycache__/
+*.pyc

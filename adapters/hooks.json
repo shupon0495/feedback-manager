@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "p=\"$PWD\"; while [ ! -f \"$p/.agents/skills/feedback-manager/adapters/codex_hook.py\" ]; do if [ \"$p\" = / ]; then echo 'Feedback Manager: project installation not found' >&2; exit 2; fi; p=$(dirname \"$p\"); done; exec uv run --project \"$p/.agents/skills/feedback-manager\" \"$p/.agents/skills/feedback-manager/adapters/codex_hook.py\" --project \"$p\"",
+            "timeout": 30,
+            "statusMessage": "Loading Feedback Manager preferences"
+          }
+        ]
+      }
+    ]
+  }
+}
