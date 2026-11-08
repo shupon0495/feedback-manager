@@ -14,6 +14,52 @@ uv run --project . scripts/install.py /path/to/project
 
 対象プロジェクトで一度 `uv run --project .agents/skills/feedback-manager python --version` を実行し、Python が利用可能であることを確認する。初回の Python ダウンロードにはネットワークが必要な場合がある。uv のキャッシュに書けない環境では `UV_CACHE_DIR` を書き込み可能な場所へ設定する。特定マシンの Python パスを配布物に固定しない。
 
+### NixOS での Python 設定
+
+uv が取得した汎用 Linux 向け Python は、NixOS の動的リンカーを見つけられずに起動できない場合がある。システム設定を変更せずに使うには、Nix が提供する Python を Feedback Manager 専用に指定する。以下は対象プロジェクトのルートから実行する。Nix の flake 機能と `uv` が必要で、初回の取得にはネットワークが必要な場合がある。
+
+まず、配置済みの `.agents/skills/feedback-manager/` に Python へのリンクを作成する。Python 本体は Nix ストアに置かれる。
+
+```sh
+nix build nixpkgs#python312 \
+  --out-link .agents/skills/feedback-manager/.nix-python
+```
+
+次に、そのパスをこのインストール専用の `.python-version` に記録する。
+
+```sh
+printf '%s\n' "$PWD/.agents/skills/feedback-manager/.nix-python/bin/python3" \
+  > .agents/skills/feedback-manager/.python-version
+```
+
+インストーラーと、後から動くフックはいずれも Feedback Manager のプロジェクトを指定して実行するため、この Python を参照する。
+
+```sh
+uv run --project .agents/skills/feedback-manager \
+  .agents/skills/feedback-manager/scripts/install.py .
+
+uv run --project .agents/skills/feedback-manager python --version
+```
+
+最後のコマンドで Python 3.12 が表示されることを確認する。既存の `.venv` が別の Python を参照している場合は、Feedback Manager の `.venv` を再作成する必要がある。`.nix-python` と `.python-version` はマシン固有のため共有・コミットしない。Python の版を厳密に再現するには、別途 Nix の入力をロックする必要がある。
+
+`nix build` はリンクが残っている間は再実行不要だが、別のプロジェクトに導入する場合はそのインストール先にも Python の指定が必要。システム全体で Python を恒常的に使いたい場合は、代わりに NixOS の設定に追加できる。
+
+```nix
+environment.systemPackages = with pkgs; [
+  python312
+];
+```
+
+NixOS の設定を反映した後、`/run/current-system/sw/bin/python3 --version` で Python 3.11 以上を確認し、対象プロジェクトのルートで Feedback Manager に指定する。
+
+```sh
+printf '%s\n' /run/current-system/sw/bin/python3 \
+  > .agents/skills/feedback-manager/.python-version
+```
+
+この方法では Python 本体はシステム全体で利用でき、Feedback Manager の仮想環境は利用先プロジェクトと分かれる。システム更新によって Python の版が変わる場合がある。
+
 連携対象は **OpenCode 1.18.33 / Codex CLI 0.159.3、POSIX シェル環境**。Windows ネイティブの起動コマンドは未対応。ホストの実行環境に uv が PATH 上で必要。
 
 - OpenCode: プロジェクトの `.opencode/plugins/` を読み込む状態で再起動する。`chat.message` が共通 Python を実行し、synthetic text part に結果を追加する。トーストとモデルへの短い利用明示指示で呼び出しを知らせる。
