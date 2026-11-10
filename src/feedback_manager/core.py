@@ -74,10 +74,10 @@ class Store:
         self.path = self.directory / "feedback.sqlite3"
         self.timeout = timeout
 
-    def connect(self):
+    def connect(self, *, read_only=False):
         if not self.project.is_dir():
             fail("PROJECT_NOT_FOUND", "The explicit project directory must exist.")
-        readonly = self.policy["mode"] == "read_only"
+        readonly = read_only or self.policy["mode"] == "read_only"
         if readonly:
             if not self.path.exists():
                 con = sqlite3.connect(":memory:")
@@ -133,7 +133,7 @@ class Store:
             self.log_error(operation, result["error"])
         return result
 
-    def execute(self, request):
+    def execute(self, request, *, read_only=False):
         operation = request.get("op") if isinstance(request, dict) else None
         if not isinstance(operation, str) or operation not in {"create", "list", "get", "update", "disable", "delete", "tags", "search", "bootstrap", "batch", "history", "undo", "policy"}:
             operation = "unknown"
@@ -153,7 +153,9 @@ class Store:
                     return {"status": "ok", "operation": operation, "data": {"policy": self.policy, "feedback": [], "tags": []}}
                 fail("FM_DISABLED", "Feedback Manager is disabled by configuration.")
             self.authorize(request)
-            with closing(self.connect()) as con, con:
+            if read_only and (operation in MUTATIONS or operation == "batch"):
+                fail("WRITE_FORBIDDEN", "This invocation permits inspection only.")
+            with closing(self.connect(read_only=read_only)) as con, con:
                 # Reserve the writer before taking snapshots or validating an undo.
                 if operation in MUTATIONS or operation == "batch":
                     con.execute("BEGIN IMMEDIATE")

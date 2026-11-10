@@ -108,6 +108,27 @@ allow_update = false
 
 `auto` でも曖昧な発言、今回限りの修正、モデル自身の提案は保存しない。既存指針との矛盾は自動上書きしない。`ask` では作業の区切りで候補をまとめて確認できる。`confirmed` は呼び出し側の申告であり、CLI が会話上の承認を検証するものではない。
 
+## 保存内容を見る
+
+この配布元のディレクトリでは、次のコマンドだけで現在の DB を表示できる。JSON の入力は不要。
+
+```sh
+uv run --project . scripts/feedback.py --project . --view
+```
+
+導入先のプロジェクトルートでは次のコマンドを使う。
+
+```sh
+uv run --project .agents/skills/feedback-manager \
+  .agents/skills/feedback-manager/scripts/feedback.py --project . --view
+```
+
+`--view` は有効な指針、`--view all` は無効を含む全指針、`--view history` は変更履歴を表示する。モード・プロファイル・件数と、指針・元発言・タグ・完全な ID・UTC 日時を Markdown で出力する。ファイルに残すなら `--view > feedback.md` のようにリダイレクトできる。履歴は変更された記録の前後を表示する。
+
+エージェントにも「FM の保存内容を見せて」「無効な記録も含めて見せて」「変更履歴を見せて」と依頼できる。スキルは現在の DB を読み出して表示し、閲覧だけで保存・更新しない。
+
+閲覧コマンドは読み取り専用接続を使い、DB 未作成時にも DB を作らず、旧 DB のスキーマも移行しない。read_only/ask/auto で利用でき、off は閲覧を拒否する。失敗時は標準エラーに理由を表示して終了コード1を返す。従来の JSON 入出力は `--view` を指定しなければ変わらない。
+
 ## CLI と JSON
 
 以下を対象プロジェクトのルートで実行する。パスに空白があれば引用する。CLI は作業ディレクトリを推測せず、必須の `--project` を DB の範囲とする。

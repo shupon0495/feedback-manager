@@ -1,10 +1,11 @@
-"""One JSON request on stdin; one JSON result on stdout."""
+"""JSON requests on stdin, or --view for human-readable database inspection."""
 import argparse
 import json
 from pathlib import Path
 import sys
 
 from .core import FeedbackError, Store
+from .view import render_view
 
 
 def reject_duplicates(pairs):
@@ -25,18 +26,29 @@ def read_request(stream):
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        raise FeedbackError("INVALID_ARGUMENT", "Use --project PATH and provide one JSON request on stdin.")
+        raise FeedbackError("INVALID_ARGUMENT", "Use --project PATH with JSON stdin or --view [active|all|history].")
 
 
 def main(argv=None):
     parser = Parser(description=__doc__)
     parser.add_argument("--project", required=True, type=Path, help="Explicit target project root (not the skill directory)")
+    parser.add_argument("--view", nargs="?", const="active", choices=("active", "all", "history"),
+                        help="Print readable Markdown without stdin or database writes (default: active)")
     try:
         args = parser.parse_args(argv)
     except FeedbackError as exc:
         result = Store(Path.cwd()).error("cli", exc.code, exc.message)
     else:
         store = Store(args.project)
+        if args.view:
+            policy = store.execute({"op": "policy"}, read_only=True)
+            request = {"op": "history"} if args.view == "history" else {"op": "list", "include_inactive": args.view == "all"}
+            result = store.execute(request, read_only=True) if policy["status"] == "ok" else policy
+            if result["status"] != "ok":
+                print(f"Feedback Manager: {result['error']['code']}: {result['error']['message']}", file=sys.stderr)
+                return 1
+            print(render_view(store.project, policy["data"], args.view, result["data"]), end="")
+            return 0
         try:
             request = read_request(sys.stdin)
         except (ValueError, UnicodeError, OSError, RecursionError):
