@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 
 SOURCE = Path(__file__).resolve().parents[1]
-FILES = ("SKILL.md", "pyproject.toml", "uv.lock", "README.md", ".gitignore")
+FILES = ("SKILL.md", "pyproject.toml", "uv.lock", "README.md", ".gitignore", "feedback-manager.example.toml")
 DIRECTORIES = ("src", "scripts", "adapters", "docs", "tests")
 
 
@@ -43,6 +43,10 @@ def install(project, update=False):
     plugin_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SOURCE / "adapters/opencode.js", plugin_path)
     ignore = project / ".gitignore"
+    # Existing policy belongs to the user; upgrades never overwrite it.
+    policy = project / "feedback-manager.toml"
+    if not policy.exists():
+        policy.write_bytes((SOURCE / "feedback-manager.example.toml").read_bytes())
     content = ignore.read_text() if ignore.exists() else ""
     if "/.feedback-manager/" not in content.splitlines():
         ignore.write_text(content + ("\n" if content and not content.endswith("\n") else "") + "/.feedback-manager/\n")

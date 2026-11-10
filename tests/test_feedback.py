@@ -27,6 +27,7 @@ class StorageTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="fm test ")
         self.project = Path(self.tmp.name)
+        (self.project / "feedback-manager.toml").write_text('default_mode = "auto"\nallow_delete = true\n')
         self.store = Store(self.project)
 
     def tearDown(self):
@@ -74,7 +75,7 @@ class StorageTests(unittest.TestCase):
 
     def test_tag_validation_and_explicit_creation(self):
         row = self.create(tags=choice(create=["known"]))
-        for value, code in [(choice(existing=["unknown"]), "UNKNOWN_TAG"), (choice(create=["known"]), "TAG_EXISTS"), (choice(create=[" "]), "INVALID_INPUT"), (choice(create=["a", " a "]), "INVALID_INPUT"), ({**choice(), "confirmed": False}, "TAG_CONFIRMATION_REQUIRED"), (choice(existing=["known"], create=["known"]), "INVALID_INPUT")]:
+        for value, code in [(choice(existing=["unknown"]), "UNKNOWN_TAG"), (choice(create=["known"]), "TAG_EXISTS"), (choice(create=[" "]), "INVALID_INPUT"), (choice(create=["a", " a "]), "INVALID_INPUT"), (choice(existing=["known"], create=["known"]), "INVALID_INPUT")]:
             with self.subTest(value=value):
                 result = self.store.execute({"op": "update", "id": row["id"], "tags": value})
                 self.assertEqual(result["error"]["code"], code)
@@ -182,8 +183,13 @@ class InstallationTests(unittest.TestCase):
             existing = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "true"}]}]}}
             (project / ".codex/hooks.json").write_text(json.dumps(existing))
             target = module.install(project)
-            Store(project).execute({"op": "create", "guideline": "portable marker", "original": "remember", "tags": choice()})
+            Store(project).execute({"op": "create", "confirmed": True, "guideline": "portable marker", "original": "remember", "tags": choice()})
             module.install(project, update=True)
+            policy_path = project / "feedback-manager.toml"
+            policy_path.write_text('default_mode = "read_only"\n')
+            module.install(project, update=True)
+            self.assertEqual(policy_path.read_text(), 'default_mode = "read_only"\n')
+            policy_path.write_text('default_mode = "ask"\n')
             config = json.loads((project / ".codex/hooks.json").read_text())
             self.assertEqual(config["hooks"]["Stop"], existing["hooks"]["Stop"])
             self.assertEqual(len(config["hooks"]["UserPromptSubmit"]), 1)

@@ -26,7 +26,7 @@ def setup(project):
     subprocess.run([sys.executable, str(ROOT / "scripts/install.py"), str(project)], check=True, capture_output=True)
     subprocess.run(["git", "init", "-q", str(project)], check=True)
     for tag, marker in [(None, "FM_GENERAL_SENTINEL"), ("docs", "FM_TAGGED_SENTINEL")]:
-        result = Store(project).execute({"op": "create", "guideline": marker, "original": "synthetic test fixture", "tags": {"existing": [], "create": [tag] if tag else [], "confirmed": True}})
+        result = Store(project).execute({"op": "create", "confirmed": True, "guideline": marker, "original": "synthetic test fixture", "tags": {"existing": [], "create": [tag] if tag else [], "confirmed": True}})
         assert result["status"] == "ok", result
 
 
@@ -110,7 +110,7 @@ def codex(project, scratch):
                         raise RuntimeError(item["error"])
                     return item["result"]
             raise RuntimeError("RPC timeout")
-        rpc(1, "initialize", {"clientInfo": {"name": "feedback-manager-test", "version": "0.1"}, "capabilities": {"experimentalApi": True}})
+        rpc(1, "initialize", {"clientInfo": {"name": "feedback-manager-test", "version": "0.2"}, "capabilities": {"experimentalApi": True}})
         result = rpc(2, "hooks/list", {"cwds": [str(project)]})
         serialized = json.dumps(result)
         assert "userPromptSubmit" in serialized, result

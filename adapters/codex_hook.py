@@ -28,6 +28,9 @@ def main():
     else:
         result = store.execute({"op": "bootstrap"})
     if result["status"] == "ok":
+        if result["data"]["policy"]["mode"] == "off":
+            print("{}")
+            return 0
         output = {"systemMessage": "Feedback Manager: project preferences and tag catalogue loaded.", "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": render_context(result["data"], store.project, SKILL)}}
         print(json.dumps(output, ensure_ascii=False))
         return 0

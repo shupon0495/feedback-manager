@@ -1,4 +1,4 @@
-# Feedback Manager 0.1
+# Feedback Manager 0.2
 
 プロジェクト内の継続的なフィードバックを保存するスキル。Python 3.11 以降、uv、標準ライブラリだけで動作する。SQLite は `sqlite3` を使用し、外部 Python パッケージは不要。
 
@@ -68,6 +68,46 @@ printf '%s\n' /run/current-system/sw/bin/python3 \
 
 対象バージョンの資料と検証範囲は [docs/verification.md](docs/verification.md) を参照。
 
+## モードとプロファイル
+
+通常の修正依頼からモデルが継続的な好みを抽出する。「FM に保存して」という指定は不要。抽出や意味的な判断はモデルが行い、CLI は設定に基づく読み書き制限を強制する。
+
+プロジェクトルートの `feedback-manager.toml` を使う。インストール時には [設定例](feedback-manager.example.toml) を配置し、既存設定は更新時にも保持する。未設定時は `ask`、更新可、削除不可。
+
+```toml
+default_mode = "ask"
+allow_update = true
+allow_delete = false
+
+[profiles.trusted]
+mode = "auto"
+
+[profiles.local]
+mode = "read_only"
+
+[profiles.small_context]
+mode = "off"
+
+[profiles.append_only]
+mode = "auto"
+allow_update = false
+```
+
+| モード | 参照 | 保存 |
+| --- | --- | --- |
+| `off` | 不可。フックは指針・タグ・通知を渡さない | 不可 |
+| `read_only` | 可 | 不可。既存 DB は読み取り専用接続、未作成ならディスクに DB を作らない |
+| `ask` | 可 | 内容を確認した変更または一括変更だけ可 |
+| `auto` | 可 | 明確な継続的希望を自動保存。タグも自動分類 |
+
+`allow_update = false` は更新・無効化・再有効化・取り消しを禁止。`allow_delete = false` は削除と、記録を除去する取り消しを禁止。どちらも `auto` や承認済みの `batch` で迂回できない。`read_only` は追加も禁止する。`off` で利用できる操作は状態確認用の `policy` と空の `bootstrap` のみ。
+
+起動するシェル／ランチャーで `FM_PROFILE=trusted` などを設定し、その環境をホストとツール実行に継承する。モデル名からの信頼度推測や、ホスト名からの自動選択はしない。未指定は既定値、未登録プロファイル・不正設定はエラーとする。各プロファイルで省略した権限はトップレベルから継承する。
+
+`FM_CONFIG` に絶対パスを設定すると、プロジェクト外のユーザー管理設定を利用できる。設定や環境変数を変更できるプロセスは制限を変えられるため、これは OS の隔離機構ではない。信頼できないモデルにはランチャー側で環境を固定し、設定ファイル・DB・コードへの直接書き込みも実行権限で制限する。スキルには自己判断での設定変更・制限回避を禁止している。
+
+`auto` でも曖昧な発言、今回限りの修正、モデル自身の提案は保存しない。既存指針との矛盾は自動上書きしない。`ask` では作業の区切りで候補をまとめて確認できる。`confirmed` は呼び出し側の申告であり、CLI が会話上の承認を検証するものではない。
+
 ## CLI と JSON
 
 以下を対象プロジェクトのルートで実行する。パスに空白があれば引用する。CLI は作業ディレクトリを推測せず、必須の `--project` を DB の範囲とする。
@@ -83,31 +123,36 @@ stdin に一つの JSON オブジェクト、stdout に一つの JSON 結果。�
 
 | 操作 | 入力例 / 意味 |
 | --- | --- |
-| 登録 | `{"op":"create","guideline":"簡潔に回答する","original":"今後は簡潔に回答して","tags":{"existing":[],"create":[],"confirmed":true}}` |
-| タグ新設付き登録 | 上記の tags を `{"existing":[],"create":["文書"],"confirmed":true}` にする |
+| 登録 | `{"op":"create","guideline":"簡潔に回答する","original":"今後は簡潔に回答して","tags":{"existing":[],"create":[]},"confirmed":true}` |
+| タグ新設付き登録 | 上記の tags を `{"existing":[],"create":["文書"]}` にする |
 | 一覧 | `{"op":"list"}` は有効のみ。`"include_inactive":true` を追加すると無効も含む |
 | ID 取得 | `{"op":"get","id":"UUID"}` は無効な記録も取得できる |
-| 更新 | `{"op":"update","id":"UUID","guideline":"短く説明する","original":"今後は説明を短くして"}` |
-| タグ変更 | `{"op":"update","id":"UUID","tags":{"existing":["文書"],"create":[],"confirmed":true}}` |
-| 無効化 | `{"op":"disable","id":"UUID"}` |
-| 再有効化 | `{"op":"update","id":"UUID","active":true}` |
-| 削除 | `{"op":"delete","id":"UUID"}`。関連付けも削除する |
+| 更新 | `{"op":"update","id":"UUID","guideline":"短く説明する","original":"今後は説明を短くして","confirmed":true}` |
+| タグ変更 | `{"op":"update","id":"UUID","tags":{"existing":["文書"],"create":[]},"confirmed":true}` |
+| 無効化 | `{"op":"disable","id":"UUID","confirmed":true}` |
+| 再有効化 | `{"op":"update","id":"UUID","active":true,"confirmed":true}` |
+| 削除 | `{"op":"delete","id":"UUID","confirmed":true}`。関連付けも削除する |
 | タグ一覧 | `{"op":"tags"}` |
 | 検索 | `{"op":"search","tags":["文書","テスト"]}`。既存タグの OR とタグなしの和集合、有効のみ |
-| 発言時取得 | `{"op":"bootstrap"}`。`feedback` に有効なタグなし、`tags` に既存タグ一覧 |
-| 一括変更 | `{"op":"batch","operations":[{"op":"update","id":"UUID1","guideline":"新方針","original":"元発言"},{"op":"disable","id":"UUID2"}]}` |
+| 設定確認 | `{"op":"policy"}`。有効なモード・権限・プロファイル・設定パス |
+| 履歴 | `{"op":"history"}`。ID、日時、操作、変更前後の全記録・タグ |
+| 取り消し | `{"op":"undo","history_id":1,"confirmed":true}`。最新履歴だけを取り消す |
+| 発言時取得 | `{"op":"bootstrap"}`。`policy` に設定、`feedback` に有効なタグなし、`tags` に既存タグ一覧 |
+| 一括変更 | `{"op":"batch","confirmed":true,"operations":[{"op":"update","id":"UUID1","guideline":"新方針","original":"元発言"},{"op":"disable","id":"UUID2"}]}` |
 
 ID は生成された UUID を使用する。記録は `id, guideline, original, active, created_at, updated_at, tags` を含む。日時は UTC、元発言は前後の空白を含めて保持する。指針は 4,000 文字、元発言は 20,000 文字まで。空白のみや NUL を含む入力は拒否する。
 
-タグは大文字小文字を区別し、前後の空白を除去する。空・重複は拒否する（自動で重複除去しない）。一配列最大100件、各100文字。`existing` の未登録タグは `UNKNOWN_TAG`、`create` の登録済みタグは `TAG_EXISTS`。タグなしは両配列を空にする。`confirmed` はユーザー確認の呼び出し側の申告で、Python が会話内容を検証することはできない。更新で tags を省略すると現状維持する。使われなくなったタグも一覧に残し、再利用可能とする。
+タグは大文字小文字を区別し、前後の空白を除去する。空・重複は拒否する（自動で重複除去しない）。一配列最大100件、各100文字。`existing` の未登録タグは `UNKNOWN_TAG`、`create` の登録済みタグは `TAG_EXISTS`。タグなしは両配列を空にする。タグ内の旧 `confirmed` は互換性のため受け付けるが、承認として扱わない。`ask` の書き込みではリクエスト最上位に `"confirmed":true` が必要。更新・無効化・削除・取り消しも同様。`batch` は最上位の承認が全子操作に適用される。`auto` では承認フィールド不要。読み取り操作に承認フィールドは付けない。更新で tags を省略すると現状維持する。使われなくなったタグも一覧に残し、再利用可能とする。
 
 batch は最大100件、create/update/disable/delete を順に一つのトランザクションで処理する。途中で失敗した場合、タグ新設を含め全変更をロールバックする。batch 内で新設したタグは後続操作で existing として使える。矛盾の意味的判定はモデルが行う。
 
+各書き込み／batch は変更前後の全記録・タグを同じトランザクションの履歴に保存する。`undo` は `history` で確認した最新 ID を指定し、その変更全体を取り消す。変更後の状態と実 DB が異なる場合は拒否する。取り消し自体も履歴に残る。記録削除後も元発言は履歴に残るため、完全消去の用途には使わない。全件スナップショット方式なので履歴容量は記録数・変更回数に応じて増える。自動的な履歴削除は行わない。
+
 ## 保存・エラー
 
-DB は `<project>/.feedback-manager/feedback.sqlite3`。インストーラーはプロジェクトの `.gitignore` に `/.feedback-manager/` を追加する。WAL、外部キー、5秒のロック待機を使う。単一エージェント運用が前提。スキルを移動・更新しても運用データは上書きしない。別プロジェクトのデータは共有しない。
+DB は `<project>/.feedback-manager/feedback.sqlite3`。インストーラーはプロジェクトの `.gitignore` に `/.feedback-manager/` を追加する。WAL、外部キー、5秒のロック待機を使う。スキーマ v1 は書き込み可能なモードで v2（履歴テーブル追加）へ自動移行する。read_only は v1 も変更せず参照できるが、履歴は空となる。off/read_only のエラーはプロジェクトログへ書き込まない。単一エージェント運用が前提。スキルを移動・更新しても運用データは上書きしない。別プロジェクトのデータは共有しない。
 
-エラーコードには `INVALID_JSON`, `INVALID_ARGUMENT`, `INVALID_INPUT`, `INVALID_OPERATION`, `INVALID_ID`, `NOT_FOUND`, `UNKNOWN_TAG`, `TAG_EXISTS`, `TAG_CONFIRMATION_REQUIRED`, `PROJECT_NOT_FOUND`, `SCHEMA_VERSION`, `DB_LOCKED`, `DB_ERROR`, `IO_ERROR` がある。Python は `.feedback-manager/errors.jsonl` に UTC 日時・操作・コード・固定説明を記録し、1 MiB 到達後の次回記録時に一世代 `.1` へローテーションする。日数による削除は行わない。元発言、SQL、秘密情報、例外全文は記録しない。ログも書けない場合は stderr に `LOG_WRITE_FAILED` と元のエラーを出す。
+設定関連のエラーは `CONFIG_ERROR`, `FM_DISABLED`, `WRITE_FORBIDDEN`, `UPDATE_FORBIDDEN`, `DELETE_FORBIDDEN`, `CONFIRMATION_REQUIRED`, `UNDO_CONFLICT`。その他のエラーコードには `INVALID_JSON`, `INVALID_ARGUMENT`, `INVALID_INPUT`, `INVALID_OPERATION`, `INVALID_ID`, `NOT_FOUND`, `UNKNOWN_TAG`, `TAG_EXISTS`, `PROJECT_NOT_FOUND`, `SCHEMA_VERSION`, `DB_LOCKED`, `DB_ERROR`, `IO_ERROR` がある。Python は `.feedback-manager/errors.jsonl` に UTC 日時・操作・コード・固定説明を記録し、1 MiB 到達後の次回記録時に一世代 `.1` へローテーションする。日数による削除は行わない。元発言、SQL、秘密情報、例外全文は記録しない。ログも書けない場合は stderr に `LOG_WRITE_FAILED` と元のエラーを出す。
 
 OpenCode の起動・通信エラーは同ディレクトリの `host-errors.jsonl` に内容を含まない固定説明を記録する。こちらも1 MiB・一世代で保持する。フック未実行や uv 自体の起動失敗など、Python に到達しない障害はホストのエラー表示も確認する。
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, copyFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, copyFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -26,6 +26,11 @@ test("OpenCode chat.message calls Python, includes context and surfaces failures
     assert.equal(output.parts[0].messageID, "msg_test");
     assert.match(output.parts[0].text, /BEGIN FEEDBACK DATA/);
     assert.equal(toasted, 1);
+    await writeFile(join(root, "feedback-manager.toml"), 'default_mode = "off"\n');
+    await hooks["chat.message"]({ sessionID: "ses_test" }, output);
+    assert.equal(output.parts.length, 1);
+    assert.equal(toasted, 1);
+    await writeFile(join(root, "feedback-manager.toml"), 'default_mode = "ask"\n');
     await rm(join(root, ".feedback-manager"), { recursive: true });
     await mkdir(join(root, ".feedback-manager/feedback.sqlite3"), { recursive: true });
     await assert.rejects(hooks["chat.message"]({ sessionID: "ses_test" }, output), /HOST_RETRIEVAL_FAILED/);

@@ -1,0 +1,18 @@
+# Copy to <project>/feedback-manager.toml, or use an absolute FM_CONFIG path.
+# Select a profile in the launching host with FM_PROFILE=trusted/local/small_context.
+default_mode = "ask"
+allow_update = true
+allow_delete = false
+
+[profiles.trusted]
+mode = "auto"
+
+[profiles.local]
+mode = "read_only"
+
+[profiles.small_context]
+mode = "off"
+
+[profiles.append_only]
+mode = "auto"
+allow_update = false

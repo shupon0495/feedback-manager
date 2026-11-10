@@ -39,6 +39,7 @@ export const FeedbackManager = async ({ directory, client }) => {
         // Throwing aborts message preparation in the target version.
         throw new Error(message);
       }
+      if (result.data.policy?.mode === "off") return;
       output.parts.push({
         id: "prt_" + randomUUID().replaceAll("-", ""),
         sessionID: input.sessionID, messageID: output.message.id,
