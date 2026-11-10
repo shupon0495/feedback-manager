@@ -1,4 +1,4 @@
-# Feedback Manager 0.2
+# Feedback Manager v1.1.1
 
 プロジェクト内の継続的なフィードバックを保存するスキル。Python 3.11 以降、uv、標準ライブラリだけで動作する。SQLite は `sqlite3` を使用し、外部 Python パッケージは不要。
 
